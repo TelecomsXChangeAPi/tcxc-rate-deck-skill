@@ -54,13 +54,35 @@ Upload the `skills/tcxc-rate-deck` folder through the Skills API and use it with
 
 ## Use it
 
-Ask Claude in plain language, for example:
+Ask Claude in plain language and give it the file:
 
-- "Convert ~/Downloads/rates_september.xlsx to TCXC format"
-- "Our supplier sent a new A-Z price list, prepare it for upload to TCXC"
-- "Check this TCXC rate file before I upload it"
+```
+Convert ~/Downloads/supplier_rates.xlsx into a TCXC upload file. Keep the carrier's exact prices, no markup. Save it to ~/Downloads and tell me anything I should check before uploading.
+```
+
+Or call the skill by name: `/tcxc-rate-deck:tcxc-rate-deck` when installed as a plugin, `/tcxc-rate-deck` when installed as a folder.
+
+```
+/tcxc-rate-deck:tcxc-rate-deck ~/Downloads/supplier_rates.xlsx
+```
 
 Claude reads the deck, runs the converter, checks the result against the deck and reports what it found and what needs your decision.
+
+### Example prompts
+
+- "Convert ~/Downloads/amendment.xlsx to TCXC format with an 11% markup, and use the billing increments from the notes in the sheet"
+- "Check ~/Downloads/my_upload.csv against the carrier's original ~/Downloads/price_list.xlsx and give me a fixed file if anything is wrong"
+- "Our supplier sent a new A-Z price list, prepare it for upload to TCXC: ~/Downloads/new_supplier_rates.xlsx"
+
+### Follow-ups that work well
+
+- "block 24997 until the carrier confirms"
+- "add an 11% markup"
+- "use the peak rate column"
+- "start the future-dated codes ASAP"
+- "the Brazil rows should be 60/60, redo it"
+
+Prompts work best with the full file path, whether you want exact prices or a markup, and where to save the result.
 
 The scripts also work on their own:
 
