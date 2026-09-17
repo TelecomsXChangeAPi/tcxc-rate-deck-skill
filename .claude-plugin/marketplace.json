@@ -1,0 +1,17 @@
+{
+  "name": "tcxc",
+  "owner": {
+    "name": "TelecomsXChange",
+    "url": "https://www.telecomsxchange.com"
+  },
+  "metadata": {
+    "description": "TelecomsXchange (TCXC) tools for Claude Code: convert carrier rate decks into TCXC upload files."
+  },
+  "plugins": [
+    {
+      "name": "tcxc-rate-deck",
+      "source": "./",
+      "description": "Convert carrier voice rate decks into TelecomsXchange (TCXC) rate upload CSVs, and check or repair existing TCXC files."
+    }
+  ]
+}

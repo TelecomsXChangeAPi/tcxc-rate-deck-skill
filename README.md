@@ -33,14 +33,16 @@ The skill is the folder [`skills/tcxc-rate-deck`](skills/tcxc-rate-deck).
 
 ### Claude Code
 
-```bash
-git clone https://github.com/TelecomsXChangeAPi/tcxc-rate-deck-skill.git
-mkdir -p ~/.claude/skills
-cp -r tcxc-rate-deck-skill/skills/tcxc-rate-deck ~/.claude/skills/
-pip install pandas openpyxl
+Run these two commands inside Claude Code:
+
+```
+/plugin marketplace add TelecomsXChangeAPi/tcxc-rate-deck-skill
+/plugin install tcxc-rate-deck@tcxc
 ```
 
-To use it in a single project only, copy the folder into that project's `.claude/skills/` instead.
+The scripts need Python with pandas and openpyxl (`pip install pandas openpyxl`); Claude will tell you if they are missing.
+
+Prefer a plain skill folder? Copy `skills/tcxc-rate-deck` into `~/.claude/skills/` (or a project's `.claude/skills/`).
 
 ### Claude apps (claude.ai and desktop)
 

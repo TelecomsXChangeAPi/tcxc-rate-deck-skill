@@ -1,0 +1,13 @@
+{
+  "name": "tcxc-rate-deck",
+  "version": "1.0.0",
+  "description": "Convert carrier voice rate decks into TelecomsXchange (TCXC) rate upload CSVs, and check or repair existing TCXC files.",
+  "author": {
+    "name": "TelecomsXChange",
+    "url": "https://www.telecomsxchange.com"
+  },
+  "homepage": "https://github.com/TelecomsXChangeAPi/tcxc-rate-deck-skill",
+  "repository": "https://github.com/TelecomsXChangeAPi/tcxc-rate-deck-skill",
+  "license": "MIT",
+  "keywords": ["tcxc", "telecom", "voip", "rate-deck"]
+}
