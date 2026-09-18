@@ -19,12 +19,12 @@
 
 Carrier price lists arrive in every shape: notice blocks above the table, dial codes packed into lists and ranges, billing increments hidden in footnotes, removed codes on a separate sheet. Reformatting them by hand in Excel is slow and quietly expensive: a `60/1` typed as `60/60` bills whole minutes on routes the carrier charges per second, and prices rounded to four decimals can sell below cost on every minute.
 
-```mermaid
-flowchart LR
-    deck["Carrier rate deck<br/>xlsx · xls · csv"] --> skill["Claude with<br/>tcxc-rate-deck"]
-    skill --> upload["TCXC upload CSV<br/>ready to upload"]
-    skill --> report["Short report<br/>what needs your decision"]
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/flow-dark.svg">
+    <img src="docs/flow-light.svg" width="900" alt="A carrier rate deck in xlsx, xls or csv goes into Claude with the tcxc-rate-deck skill, which produces a TCXC upload CSV of 11 columns ready to upload, plus a report of what needs your decision.">
+  </picture>
+</p>
 
 ## What it does
 

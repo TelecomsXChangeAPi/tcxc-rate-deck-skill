@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 254" width="900" height="254" role="img" aria-label="A carrier rate deck goes into Claude with the tcxc-rate-deck skill, which produces a TCXC upload CSV and a report of what needs your decision.">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9 z" fill="#8C959F"/></marker></defs>
+<style>.t{font-family:ui-sans-serif,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;font-weight:600;font-size:18px}.s{font-family:ui-sans-serif,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;font-size:13.5px}</style>
+<rect x="8" y="79" width="252" height="96" rx="14" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1.5"/>
+<text class="t" x="134.0" y="123.0" text-anchor="middle" fill="#1F2328">Carrier rate deck</text>
+<text class="s" x="134.0" y="147.0" text-anchor="middle" fill="#59636E">xlsx · xls · csv</text>
+<rect x="324" y="79" width="252" height="96" rx="14" fill="#FDF1EC" stroke="#D97757" stroke-width="1.5"/>
+<text class="t" x="450.0" y="123.0" text-anchor="middle" fill="#1F2328">Claude + tcxc-rate-deck</text>
+<text class="s" x="450.0" y="147.0" text-anchor="middle" fill="#59636E">reads · converts · checks</text>
+<rect x="640" y="16" width="252" height="92" rx="14" fill="#EDFBF0" stroke="#2EA043" stroke-width="1.5"/>
+<text class="t" x="766.0" y="58.0" text-anchor="middle" fill="#1F2328">TCXC upload CSV</text>
+<text class="s" x="766.0" y="82.0" text-anchor="middle" fill="#59636E">11 columns · ready to upload</text>
+<rect x="640" y="146" width="252" height="92" rx="14" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1.5"/>
+<text class="t" x="766.0" y="188.0" text-anchor="middle" fill="#1F2328">Report</text>
+<text class="s" x="766.0" y="212.0" text-anchor="middle" fill="#59636E">what needs your decision</text>
+<path d="M 268 127 H 316" fill="none" stroke="#8C959F" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M 584 127 C 610 127, 610 62, 632 62" fill="none" stroke="#8C959F" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M 584 127 C 610 127, 610 192, 632 192" fill="none" stroke="#8C959F" stroke-width="2" marker-end="url(#arrow)"/>
+</svg>
