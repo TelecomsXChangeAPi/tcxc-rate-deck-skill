@@ -148,10 +148,10 @@ Or call the skill by name (`/tcxc-rate-deck` when installed as a plain folder):
 
 ### What you get back
 
-The upload CSV and a short report. Behind the report is the converter's summary, shown here (abridged) for the [example deck](examples/acme_rate_notice.xlsx):
+The upload CSV and a short report. Behind the report is the converter's summary, shown here (abridged) for the [example deck](examples/acme_rate_notice.csv):
 
 ```text
-Deck:     acme_rate_notice.xlsx (sheet 'Rate Notice', header on row 7)
+Deck:     acme_rate_notice.csv (sheet 'acme_rate_notice.csv', header on row 7)
 Columns:  code <- 'Dial Codes' | rate <- 'Rate/Min' | effective <- 'Effective' (%d/%m/%Y) | increments <- 'Billing'
 Codes:    hyphenated codes read as ranges (e.g. 49172-49174 -> 49172..49174)
 Rows:     25 codes from the deck -> 25 TCXC rows; 1 row without a code skipped
@@ -191,7 +191,7 @@ Country,Description,Prefix,Effective from,Rate Id,Forbidden,Discontinued,Price 1
 
 | File | What it is |
 |---|---|
-| [`examples/acme_rate_notice.xlsx`](examples/acme_rate_notice.xlsx) | A fictional supplier deck with a notice block, code lists, ranges, text dates, a billing column and a closed code |
+| [`examples/acme_rate_notice.csv`](examples/acme_rate_notice.csv) | A fictional supplier deck with a notice block, code lists, ranges, text dates, a billing column and a closed code |
 | [`examples/acme_rate_notice_tcxc.csv`](examples/acme_rate_notice_tcxc.csv) | The converter's output, produced with `--now 2026-09-17` so the dates stay reproducible |
 
 <details>
@@ -232,6 +232,8 @@ Both. In Claude Code it installs as a plugin with two commands. In the Claude ap
 ### Does my rate data leave my computer?
 
 The skill's scripts make no network calls: they read the deck you point them at and write a CSV next to it. In Claude Code everything runs locally on your machine. In the Claude apps and the API, files you upload are processed in Claude's code execution container.
+
+The plugin never asks for, reads or sends a credential: no API keys, no TCXC login, no environment variables and no user config. It does not upload anything to TCXC; you upload the finished CSV yourself.
 
 ### Which carriers' rate decks are supported?
 

@@ -28,12 +28,24 @@ def write_csv(path, text):
     return path
 
 
+def example_as_xlsx(path):
+    # the repo ships the example as CSV; rebuild the workbook a carrier would send, numbers as numbers
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Rate Notice'
+    for row in csv.reader(open(EXAMPLES / 'acme_rate_notice.csv', newline='')):
+        ws.append([float(c) if c.replace('.', '', 1).isdigit() and '.' in c else c or None for c in row])
+    wb.save(path)
+    return path
+
+
 def test_example_deck_converts_to_expected_file(tmp_path):
-    out = tmp_path / 'out.csv'
-    result = run(CONVERT, EXAMPLES / 'acme_rate_notice.xlsx', '--out', out, '--now', '2026-09-17', cwd=tmp_path)
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert out.read_text() == (EXAMPLES / 'acme_rate_notice_tcxc.csv').read_text()
-    assert 'their calls match 49 at 0.0078' in result.stdout  # future-dated codes fall back to a cheaper prefix
+    for deck in (EXAMPLES / 'acme_rate_notice.csv', example_as_xlsx(tmp_path / 'acme_rate_notice.xlsx')):
+        out = tmp_path / 'out.csv'
+        result = run(CONVERT, deck, '--out', out, '--now', '2026-09-17', cwd=tmp_path)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert out.read_text() == (EXAMPLES / 'acme_rate_notice_tcxc.csv').read_text(), deck.name
+        assert 'their calls match 49 at 0.0078' in result.stdout  # future-dated codes fall back to a cheaper prefix
 
 
 def test_example_output_passes_validation(tmp_path):

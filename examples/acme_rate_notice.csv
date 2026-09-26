@@ -1,0 +1,17 @@
+Acme Voice Wholesale
+Premium CLI Route - Rate Notification
+Issue date:,16/09/2026
+Currency:,USD per minute
+Billing as per the Billing column. Codes marked Closed are withdrawn from their effective date.
+
+Country,Network,Dial Codes,Rate/Min,Effective,Billing,Change
+Germany,Mobile - Vodafone,"49152, 49162, 49172-49174",0.0495,23/09/2026,60/1,Increase
+Germany,Fixed,49,0.0078,10/09/2026,1/1,Unchanged
+France,Mobile - Orange,"336 07, 336 08",0.052,16/09/2026,1/1,Decrease
+Mexico,Mobile,+521,0.0151,01/10/2026,60/60,New
+Nigeria,Mobile - MTN,234803; 234806; 234703,0.1123,16/09/2026,60/60,Unchanged
+Nigeria,Mobile - Glo,234805,0.121,20/09/2026,60/60,Closed
+Jamaica,Mobile - Digicel,"187638, 187639",0.098,16/09/2026,60/60,Unchanged
+United Kingdom,Mobile - EE,447400-447409,0.0112,16/09/2026,1/1,Unchanged
+
+"Rates are subject to change without notice. All prices in USD per minute, excluding taxes."
