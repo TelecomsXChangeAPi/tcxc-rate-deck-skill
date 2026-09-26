@@ -227,7 +227,8 @@ def date_score(h):
 
 def increment_kind(h):
     words = set(h.split())
-    if not words & {'pulse', 'increment', 'increments', 'billing', 'rounding', 'interval', 'intervals', 'inc'}:
+    # 'bi' is the "BI Type" (billing increment) column some carriers use; its "BI Effective Date" is excluded by 'date' below
+    if not words & {'pulse', 'increment', 'increments', 'billing', 'rounding', 'interval', 'intervals', 'inc', 'bi'}:
         return None
     if words & {'price', 'rate', 'rates', 'date'}:
         return None

@@ -11,6 +11,7 @@ How the shapes carriers actually send map onto `convert_to_tcxc.py`. Find the cl
 6. Several price columns or time bands
 7. An existing TCXC file or portal export
 8. Anything else (PDF, free text, wide tables)
+9. Full A-Z amendments with a BI Type column and a code-changes sheet
 
 ## 1. One code per row with an increment column
 
@@ -74,3 +75,27 @@ Files already in TCXC columns convert as they are: `Prefix`, `Price 1`, `Price N
 ## 8. Anything else
 
 For a PDF, free text or a wide table with one column per country, build a plain table first (one row per code or code list with rate, effective date, increment, destination and status), save it as CSV, and run the converter on that. Checking your intermediate table against the source is part of the job: spot-check rows before converting.
+
+## 9. Full A-Z amendments with a BI Type column and a code-changes sheet
+
+Some large carriers send every amendment as the full A-Z (100,000 rows or more) even when only a handful of rows change. Typical shape: sheets `Rate Changes` and `Code Changes` plus several empty sheets, the header 20 or so rows down after a notice block naming the product, customer and `Date:`, and columns like:
+
+`Destination | City Code(s) | Price($) | Effective Date | Comments | BI Type | BI Effective Date | Service Level`
+
+Conversion: `--hyphen concat` when codes are written as country plus area (`93-76`; `229-0145` keeps its leading zero), increments from `BI Type` (detected automatically; values such as `1/1`, `60/60`, `60/1`, `30/6`), and `Comments` is the status column. Legal text after the table is skipped as rows without a code. Removals often sit only on the `Code Changes` sheet (`Code Removed`), see section 3.
+
+### Patterns that look like errors but are usually normal on these decks
+
+Mention them in one line at most, under "normal for this carrier", not in the decisions list, unless the user says otherwise:
+
+- **Blocking-level prices on networks the product doesn't carry.** A few mobile networks priced at 1 to 3 per minute while the country's fixed or "Other" rate is a fraction of a cent. The within-country outlier check will list the cheap codes; they are the real routes, the expensive ones are a deterrent. Do not suggest blocking the cheap ones.
+- **The code-changes sheet lists whole destinations.** When a few codes are added, every code of that destination appears with `No Change`, and the matching rate rows say something like `Code Change ... No Rate Change` with a future effective date. Only rows marked `Code Added` or `Code Removed` are actual changes.
+- **Effective dates that go backwards.** A destination announced as `Pending Code Change On <date>` in one amendment shows its original, older effective date again once the change has taken effect. That is the change completing, not a reversal.
+- **Codes appear and disappear between amendments without a code-changes entry**, sometimes backdated, and destinations are renamed at the same price. A code removed from a specific destination is then billed at the shorter prefix's rate.
+- **Billing increment changes with `No Change` in Comments**; the change shows only in `BI Type` and `BI Effective Date`, sometimes at short notice.
+- **Codes added under a network name price differently from the country's `Other` row** while the comment says `No Rate Change`.
+- **Satellite and international network codes** (870, 881, 882, 883) at several units per minute, stray spaces or blanks in text columns, and 10-digit national numbering that makes codes look long.
+
+### What is still worth a line in the report
+
+Rows whose `Comments` say `Rate Increase` or `Rate Decrease`, rows marked `Code Added` or `Code Removed`, and increment changes visible in `BI Effective Date` after the amendment date. When the previous amendment is available, diff the two on code, price and `BI Type` and report only those differences; that is a far shorter and more useful list than the outlier checks on a deck this shape.

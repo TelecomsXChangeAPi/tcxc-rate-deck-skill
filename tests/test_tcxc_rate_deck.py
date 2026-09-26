@@ -150,3 +150,21 @@ def test_old_deck_warning(tmp_path):
     result = run(CONVERT, deck, '--out', tmp_path / 'out.csv', '--now', '2026-09-17', cwd=tmp_path)
     assert result.returncode == 0, result.stdout + result.stderr
     assert 'newest effective date in the deck is 2025-01-01' in result.stdout
+
+
+def test_bi_type_column_is_the_increment(tmp_path):
+    deck = write_csv(tmp_path / 'deck.csv',
+                     'Destination,City Code(s),Price($),Effective Date,Comments,BI Type,BI Effective Date,Service Level\n'
+                     'Afghanistan-Mobile A,93-76,0.1500,21-Sep-18,No Change,1/1,19-Oct-07,Standard\n'
+                     'Afghanistan-Mobile B,93-70,0.1400,06-Feb-25,No Change,60/1,25-Dec-25,Standard\n'
+                     'Vietnam-Mobile,84-35,0.0500,10-May-22,No Change,60/60,01-Jan-22,Standard\n')
+    out = tmp_path / 'out.csv'
+    result = run(CONVERT, deck, '--out', out, '--hyphen', 'concat', '--now', '2026-09-19', cwd=tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "increments <- 'BI Type'" in result.stdout
+    got = rows(out)
+    assert (got['9376']['Interval 1'], got['9376']['Interval N']) == ('1', '1')
+    assert (got['9370']['Interval 1'], got['9370']['Interval N']) == ('60', '1')
+    assert (got['8435']['Interval 1'], got['8435']['Interval N']) == ('60', '60')
+    assert "effective <- 'Effective Date'" in result.stdout
+    assert 'default' not in result.stdout.split('Increments:')[1].split('\n')[0]

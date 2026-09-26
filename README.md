@@ -253,7 +253,7 @@ pip install pandas openpyxl pytest
 pytest
 ```
 
-12 tests cover the example deck, code lists and ranges, joined country and area codes, increment rules, markup rounding, repairing hand-edited files, and the checks that stop an ambiguous deck.
+13 tests cover the example deck, code lists and ranges, joined country and area codes, increment rules, BI Type increment columns, markup rounding, repairing hand-edited files, and the checks that stop an ambiguous deck.
 
 ## Contributing
 

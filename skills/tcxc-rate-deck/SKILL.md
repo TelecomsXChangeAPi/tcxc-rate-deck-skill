@@ -54,7 +54,7 @@ Open the file and read it the way a person would before running anything. These 
 - **Removed or blocked codes.** A status column (Closed, Deleted, Removed, Blocked) or a separate code-changes sheet. These are part of the deck: removed codes go out as `Discontinued=1` (dated when the deck gives a removal date) and blocked ones as `Forbidden=1`, so the upload carries the carrier's removals instead of silently dropping them.
 - **Time bands.** If a code has peak and off-peak rates, TCXC takes one price per code: ask which band to use (usually the flat or standard one).
 
-`references/deck-layouts.md` shows how common layouts map onto the converter's options; read it when a deck has notes-based increments, code-change sheets, split code columns or anything else unusual.
+`references/deck-layouts.md` shows how common layouts map onto the converter's options; read it when a deck has notes-based increments, code-change sheets, split code columns or anything else unusual. Section 9 lists patterns on full A-Z amendment decks that look like errors but are normal carrier practice: check them before putting anything in the decisions list.
 
 ### 2. Convert with the bundled script
 
