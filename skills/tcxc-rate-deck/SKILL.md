@@ -33,6 +33,21 @@ Country,Description,Prefix,Effective from,Rate Id,Forbidden,Discontinued,Price 1
 | Interval 1 | first billing increment in whole seconds | A carrier increment of `60/1` means Interval 1 = 60, Interval N = 1. |
 | Interval N | every later increment in whole seconds | Never write `60/1` into one cell: the upload rejects it or bills wrong. |
 
+### Origin-based rates (OBR)
+
+Some carriers price a destination by where the call comes from (an EEA caller pays less than a non-EEA one). TCXC keeps those as origin-based rates, uploaded separately from the normal rates, with a **CLI Prefix** column after Prefix:
+
+```
+Country,Description,Prefix,CLI Prefix,Effective from,Rate Id,Forbidden,Discontinued,Price 1,Price N,Interval 1,Interval N
+,,4420,44,ASAP,,0,0,0.008,0.008,60,1
+,,4420,33,ASAP,,0,0,0.01,0.01,60,1
+,,4420,OBR_GLOBAL_DEFAULT_RATE,ASAP,,0,0,0.09,0.09,60,1
+```
+
+CLI Prefix is the caller's calling code or a range in it (up to 10 digits), or a fallback the switch uses when the origin can't be used: `OBR_INVALID_CLI_RATE` (caller ID malformed for its country), `OBR_UNKNOWN_COUNTRY_RATE` (no known country), `OBR_GLOBAL_DEFAULT_RATE` (every other origin). One row per prefix and origin. Such a file is uploaded with the "Origin-based rates" option (obr=1), and only applies once origin-based rating is on for the route; calls with no matching origin rate pay the normal rate.
+
+Fallbacks must not be cheaper than a real origin's price: a caller could otherwise hide or garble their caller ID to pay less. The converter and validator warn about it.
+
 ### How TCXC applies Effective from
 
 - `ASAP` applies on upload. Decreases take effect immediately. Increases are detected by TCXC's upload logic and moved to 7 days from upload; the current rate keeps selling until then, then the new rate replaces it.
@@ -52,6 +67,7 @@ Open the file and read it the way a person would before running anything. These 
 - **Currency.** Prices must be in the currency the seller's TCXC account sells in. If the deck is in another currency, stop and ask; never convert currencies silently.
 - **Billing increments.** Usually a column (`Pulse`, `Billing`, `Increment`, values like `60/1`). Some carriers only state them in notes, e.g. "the following countries will be billed 60/60: ...". Read the notes: they override the default for the destinations they name, and the names must match the deck's destination names.
 - **Removed or blocked codes.** A status column (Closed, Deleted, Removed, Blocked) or a separate code-changes sheet. These are part of the deck: removed codes go out as `Discontinued=1` (dated when the deck gives a removal date) and blocked ones as `Forbidden=1`, so the upload carries the carrier's removals instead of silently dropping them.
+- **Origin-based pricing.** A column like Origin, Origination or CLI Prefix, or one sheet per origin, means prices depend on where the call comes from: convert to the origin-based format (see "Origin-based rates (OBR)").
 - **Time bands.** If a code has peak and off-peak rates, TCXC takes one price per code: ask which band to use (usually the flat or standard one).
 
 `references/deck-layouts.md` shows how common layouts map onto the converter's options; read it when a deck has notes-based increments, code-change sheets, split code columns or anything else unusual. Section 9 lists patterns on full A-Z amendment decks that look like errors but are normal carrier practice: check them before putting anything in the decisions list.
@@ -77,6 +93,7 @@ It detects the sheet, header row and columns, then prints the mapping it used, a
 | `--hyphen range` or `--hyphen concat` | codes like `447700-447709` (a range) vs `82-01` (country and area, joined to 8201); the script decides per column and stops if unsure |
 | `--discontinue CODE...` / `--forbid CODE...` (or `@file` with one code per line) | codes removed or blocked outside the rate table, e.g. on a code-changes sheet |
 | `--on-duplicate first\|last` | the same code appears twice with different values; the default stops and shows them so you can decide |
+| `--origin COL`, `--origin-map "NAME=CODES"` (repeat), `--origin-default FALLBACK` | origin-based decks: the origin column holds calling codes, groups the converter knows (EEA/EU, Rest of world/Non-EEA, Invalid CLI, Unknown) or names you map (`--origin-map "Gulf=971,966,974"`, `--origin-map "Off-net=OBR_GLOBAL_DEFAULT_RATE"`); unmapped names stop the conversion. An Origin / CLI Prefix column is picked up on its own |
 | `--skip-bad-rows` | only after reading why rows failed and confirming they are junk (repeated headers, section titles) |
 | `--markup-percent P`, `--decimals N` | only when the user asks for a margin or rounding; prices are rounded up so they never fall below cost |
 
@@ -92,6 +109,8 @@ The built-in validation proves the file is well-formed, not that it matches the 
 - A handful of rows compared by eye with the deck, covering each increment type, a dated row and any flagged row.
 - Every "Check before upload" line. Rules that matched nothing usually mean a spelling mismatch with the deck's destination names, which silently leaves those codes on the default increment.
 - Codes with a future start date. Until that date, calls to them match the longest prefix that is already live, often a cheap country-wide code (a new mobile range falling back to the fixed-line catch-all). The converter lists these; ask the user whether to start them ASAP, especially on a first upload from a new supplier.
+
+- For origin-based decks: the origin counts printed under Origins, what each origin name was mapped to (the EEA group is the 30 EEA calling codes, without the UK, Switzerland or the EU's overseas codes), and that no fallback is cheaper than a real origin.
 
 ### 4. Report to the user
 

@@ -17,6 +17,10 @@ from datetime import datetime
 
 COLUMNS = ['Country', 'Description', 'Prefix', 'Effective from', 'Rate Id', 'Forbidden',
            'Discontinued', 'Price 1', 'Price N', 'Interval 1', 'Interval N']
+# Origin-based rates (OBR): the same with the caller's origin after Prefix.
+OBR_COLUMNS = COLUMNS[:3] + ['CLI Prefix'] + COLUMNS[3:]
+# What the switch falls back to when a caller's origin can't be used.
+OBR_FALLBACKS = ('OBR_INVALID_CLI_RATE', 'OBR_UNKNOWN_COUNTRY_RATE', 'OBR_GLOBAL_DEFAULT_RATE')
 
 DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$')
 PRICE_RE = re.compile(r'^\d+(\.\d+)?$')
@@ -51,35 +55,51 @@ def validate(path, now=None):
         return result
 
     header = rows[0]
-    if header[:len(COLUMNS)] != COLUMNS:
-        errors['Header must start with exactly: ' + ','.join(COLUMNS)].append('line 1: ' + ','.join(header))
+    obr = header[:len(OBR_COLUMNS)] == OBR_COLUMNS
+    columns = OBR_COLUMNS if obr else COLUMNS
+    stats['obr'] = obr
+    if header[:len(columns)] != columns:
+        errors['Header must start with exactly: ' + ','.join(COLUMNS) +
+               ' (or, for origin-based rates: ' + ','.join(OBR_COLUMNS) + ')'].append('line 1: ' + ','.join(header))
         return result
-    if len(header) > len(COLUMNS):
+    if len(header) > len(columns):
         warnings['Extra columns after Interval N are not part of the upload format; remove them'].append(
-            'line 1: ' + ', '.join(header[len(COLUMNS):]))
+            'line 1: ' + ', '.join(header[len(columns):]))
 
     first_line = {}
+    origin_prices = defaultdict(dict)  # prefix -> {CLI prefix: price 1}, origin-based rates only
     for n, row in enumerate(rows[1:], start=2):
         if not any(cell.strip() for cell in row):
             warnings['Blank line'].append(f'line {n}')
             continue
-        if len(row) < len(COLUMNS):
-            errors[f'Row has fewer than {len(COLUMNS)} fields'].append(f'line {n}')
+        if len(row) < len(columns):
+            errors[f'Row has fewer than {len(columns)} fields'].append(f'line {n}')
             continue
+        cli = ''
+        if obr:
+            cli = row[3]
+            row = row[:3] + row[4:]
         _, _, prefix, effective, rate_id, forbidden, discontinued, price1, price_n, interval1, interval_n = row[:11]
         stats['rows'] += 1
 
         def bad(message, value):
             errors[message].append(f'line {n}: {value!r}')
 
+        key = (prefix, cli) if obr else prefix
+        if obr and not (cli in OBR_FALLBACKS or (cli.isdigit() and len(cli) <= 10)):
+            bad('CLI Prefix must be up to 10 digits (the caller\'s country or range) or one of ' +
+                ', '.join(OBR_FALLBACKS), cli)
         if not prefix.isdigit():
             bad('Prefix must be digits only (country code + area code, no +, 00, spaces or hyphens)', prefix)
         elif prefix.startswith('0'):
             bad('Prefix must not start with 0 (strip the international or trunk prefix)', prefix)
-        elif prefix in first_line:
-            bad(f'Prefix appears more than once', f'{prefix} (first on line {first_line[prefix]})')
+        elif key in first_line:
+            if obr:
+                bad('Prefix and CLI Prefix appear together more than once', f'{prefix}/{cli} (first on line {first_line[key]})')
+            else:
+                bad(f'Prefix appears more than once', f'{prefix} (first on line {first_line[key]})')
         else:
-            first_line[prefix] = n
+            first_line[key] = n
 
         if effective == 'ASAP':
             stats['effective']['ASAP'] += 1
@@ -113,6 +133,8 @@ def validate(path, now=None):
                 warnings[f'{name} has more than 8 decimals (float noise?)'].append(f'line {n}: {value!r}')
         if prices_ok:
             stats['prices'].append(float(price1))
+            if obr and active:
+                origin_prices[prefix][cli] = float(price1)
             if active and float(price1) == 0:
                 warnings['Price is 0 on a route that is not Forbidden or Discontinued'].append(f'line {n}: {prefix}')
             if float(price1) != float(price_n):
@@ -126,6 +148,18 @@ def validate(path, now=None):
         if intervals_ok:
             stats['intervals'][f'{interval1}/{interval_n}'] += 1
 
+    # A fallback cheaper than a real origin lets a caller pay less by hiding or
+    # garbling their caller ID.
+    for prefix, prices in origin_prices.items():
+        real = {cli: p for cli, p in prices.items() if cli not in OBR_FALLBACKS}
+        if not real:
+            continue
+        top_cli = max(real, key=real.get)
+        for fallback in OBR_FALLBACKS:
+            if fallback in prices and prices[fallback] < real[top_cli]:
+                warnings['Fallback rate cheaper than a real origin (callers could hide their origin to pay less)'].append(
+                    f'{prefix}: {fallback} {prices[fallback]:g} < origin {top_cli} {real[top_cli]:g}')
+
     if stats['rows'] == 0:
         errors['File has no rate rows'].append('whole file')
     return result
@@ -137,7 +171,8 @@ def print_report(result, path, out=sys.stdout):
     if stats['rows']:
         effective = ', '.join(f'{k} {v}' for k, v in stats['effective'].most_common())
         intervals = ', '.join(f'{k}: {v}' for k, v in stats['intervals'].most_common())
-        print(f'  rows {stats["rows"]} | Effective from: {effective} | Forbidden {stats["forbidden"]} '
+        kind = 'origin-based rates, ' if stats.get('obr') else ''
+        print(f'  {kind}rows {stats["rows"]} | Effective from: {effective} | Forbidden {stats["forbidden"]} '
               f'| Discontinued {stats["discontinued"]}', file=out)
         print(f'  intervals {intervals}', file=out)
         if stats['prices']:
