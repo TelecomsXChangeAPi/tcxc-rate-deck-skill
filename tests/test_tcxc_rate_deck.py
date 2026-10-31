@@ -180,3 +180,71 @@ def test_bi_type_column_is_the_increment(tmp_path):
     assert (got['8435']['Interval 1'], got['8435']['Interval N']) == ('60', '60')
     assert "effective <- 'Effective Date'" in result.stdout
     assert 'default' not in result.stdout.split('Increments:')[1].split('\n')[0]
+
+
+# ------------------------------------------------------------ origin-based rates
+
+OBR_HEADER = 'Country,Description,Prefix,CLI Prefix,Effective from,Rate Id,Forbidden,Discontinued,Price 1,Price N,Interval 1,Interval N'
+
+
+def obr_rows(path):
+    return {(r['Prefix'], r['CLI Prefix']): r for r in csv.DictReader(open(path, newline=''))}
+
+
+def test_origin_groups_become_cli_prefixes(tmp_path):
+    deck = write_csv(tmp_path / 'deck.csv', '\n'.join([
+        'Destination,Code,Origin,Rate,Billing',
+        'UK London,4420,EEA,0.0100,60/1',
+        'UK London,4420,Non-EEA,0.0900,60/1',
+        'UK London,4420,Invalid CLI,0.1200,60/1',
+        'UK London,4420,+44,0.0080,60/1',
+    ]))
+    out = tmp_path / 'out.csv'
+    result = run(CONVERT, deck, '--out', out, cwd=tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert out.read_text().splitlines()[0] == OBR_HEADER
+    got = obr_rows(out)
+    assert got[('4420', '33')]['Price 1'] == '0.01'      # France, from the EEA group
+    assert got[('4420', '47')]['Price 1'] == '0.01'      # Norway is EEA
+    assert ('4420', '41') not in got                     # Switzerland is not
+    assert got[('4420', 'OBR_GLOBAL_DEFAULT_RATE')]['Price 1'] == '0.09'
+    assert got[('4420', 'OBR_INVALID_CLI_RATE')]['Interval 1'] == '60'
+    assert got[('4420', '44')]['Price 1'] == '0.008'
+    assert len(got) == 30 + 3
+    assert 'Origins:' in result.stdout and 'Origin-based rates' in result.stdout
+
+
+def test_origin_names_need_a_map(tmp_path):
+    deck = write_csv(tmp_path / 'deck.csv', '\n'.join([
+        'Destination,Code,Origin,Rate',
+        'UAE Mobile,9715,Gulf,0.10',
+        'UAE Mobile,9715,Rest of world,0.20',
+    ]))
+    out = tmp_path / 'out.csv'
+    stopped = run(CONVERT, deck, '--out', out, cwd=tmp_path)
+    assert stopped.returncode == 2 and "'Gulf'" in stopped.stdout + stopped.stderr
+    assert not out.exists()
+    ok = run(CONVERT, deck, '--out', out, '--origin-map', 'Gulf=971,966,+974', cwd=tmp_path)
+    assert ok.returncode == 0, ok.stdout + ok.stderr
+    assert set(obr_rows(out)) == {('9715', '971'), ('9715', '966'), ('9715', '974'), ('9715', 'OBR_GLOBAL_DEFAULT_RATE')}
+
+
+def test_cheap_fallback_is_flagged(tmp_path):
+    deck = write_csv(tmp_path / 'deck.csv', '\n'.join([
+        'Destination,Code,Origin,Rate',
+        'UK London,4420,44,0.05',
+        'UK London,4420,Rest of world,0.01',
+    ]))
+    result = run(CONVERT, deck, '--out', tmp_path / 'out.csv', cwd=tmp_path)
+    assert 'cheaper than a real origin' in result.stdout
+
+
+def test_validator_checks_origin_files(tmp_path):
+    good = write_csv(tmp_path / 'good.csv', OBR_HEADER + '\n,,4420,44,ASAP,,0,0,0.01,0.01,1,1\n,,4420,33,ASAP,,0,0,0.02,0.02,1,1\n')
+    assert run(VALIDATE, good, cwd=tmp_path).returncode == 0
+    bad = write_csv(tmp_path / 'bad.csv', OBR_HEADER + '\n,,4420,44,ASAP,,0,0,0.01,0.01,1,1\n,,4420,44,ASAP,,0,0,0.02,0.02,1,1\n'
+                    ',,4420,OBR_NOPE,ASAP,,0,0,0.02,0.02,1,1\n')
+    result = run(VALIDATE, bad, cwd=tmp_path)
+    assert result.returncode == 1
+    assert 'Prefix and CLI Prefix appear together more than once' in result.stdout
+    assert 'CLI Prefix must be up to 10 digits' in result.stdout

@@ -26,7 +26,7 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from validate_tcxc import COLUMNS, print_report, validate  # noqa: E402
+from validate_tcxc import COLUMNS, OBR_COLUMNS, OBR_FALLBACKS, print_report, validate  # noqa: E402
 
 HEADER_SCAN_ROWS = 200
 ASAP_WORDS = {'asap', 'immediate', 'immediately', 'now'}
@@ -41,6 +41,26 @@ DATE_BASES = ['%Y-%m-%d', '%d/%m/%y', '%d/%m/%Y', '%m/%d/%y', '%m/%d/%Y', '%d-%m
               '%d.%m.%y', '%d.%m.%Y', '%Y/%m/%d', '%d-%b-%y', '%d-%b-%Y', '%d %b %y', '%d %b %Y',
               '%d %B %Y', '%b %d %Y', '%B %d %Y', '%Y%m%d']
 DATE_FORMATS = [base + time for base in DATE_BASES for time in ('', ' %H:%M', ' %H:%M:%S')]
+
+# Origin-based rates (OBR): the caller's origin as TCXC's CLI Prefix. Calling
+# codes of the European Economic Area (EU + Iceland, Liechtenstein, Norway);
+# the UK (44) and Switzerland (41) are not in it, nor are the EU's overseas
+# regions on their own codes (262, 590, 594, 596): add those with --origin-map
+# when a carrier's "EEA" includes them.
+EEA_CODES = ['30', '31', '32', '33', '34', '351', '352', '353', '354', '356', '357', '358', '359', '36', '370',
+             '371', '372', '385', '386', '39', '40', '420', '421', '423', '43', '45', '46', '47', '48', '49']
+ORIGIN_GROUPS = {
+    **{k: EEA_CODES for k in ('eea', 'eu', 'european economic area', 'european union', 'europe eea', 'eea origin',
+                               'eu origin', 'eu eea', 'eea eu', 'intra eea', 'intra eu', 'on net eea')},
+    **{k: ['OBR_GLOBAL_DEFAULT_RATE'] for k in ('non eea', 'non eu', 'outside eea', 'outside eu', 'rest of world',
+                                                'rest of the world', 'row', 'other', 'others', 'all other', 'all others',
+                                                'international', 'world', 'global', 'default', 'any', 'off net',
+                                                'non eea origin', 'non eu origin', 'extra eea', 'extra eu')},
+    **{k: ['OBR_INVALID_CLI_RATE'] for k in ('invalid', 'invalid cli', 'no cli', 'cli less', 'without cli',
+                                             'missing cli', 'empty cli', 'anonymous', 'withheld', 'hidden cli')},
+    **{k: ['OBR_UNKNOWN_COUNTRY_RATE'] for k in ('unknown', 'unknown country', 'unknown origin', 'unrecognised',
+                                                 'unrecognized')},
+}
 
 
 class DeckError(Exception):
@@ -59,6 +79,7 @@ class Rate:
     interval_n: int
     row: str
     destination: str
+    origin: str = ''  # CLI Prefix of an origin-based rate
 
     def values(self):
         return (self.effective, self.forbidden, self.discontinued, self.price1, self.price_n,
@@ -337,7 +358,15 @@ def map_columns(headers, raw_headers, args):
         else:
             mapping['destination'] = [i for s, i in scored if s == 1][:1]
 
-    used = set(mapping['code']) | {mapping['rate'], mapping['rate_n'], mapping['effective']}
+    if args.origin:
+        mapping['origin'] = given(args.origin)
+    else:
+        # Only an unmistakable origin column makes this an origin-based deck.
+        mapping['origin'] = next((i for i, h in enumerate(headers) if h in ('cli prefix', 'origin', 'origin prefix',
+                                                                         'caller origin', 'a number origin',
+                                                                         'origin country', 'origination')), None)
+
+    used = set(mapping['code']) | {mapping['rate'], mapping['rate_n'], mapping['effective'], mapping['origin']}
     mapping['status'] = [i for i, h in enumerate(headers) if h and is_status(h) and i not in used]
     mapping['forbidden'] = next((i for i, h in enumerate(headers) if h in ('forbidden', 'blocked')), None)
     mapping['discontinued'] = next((i for i, h in enumerate(headers) if h == 'discontinued'), None)
@@ -387,6 +416,33 @@ def finish_code(code):
     if not code.isdigit() or code.startswith('0'):
         raise ValueError(code)
     return code
+
+
+def resolve_origin(cell, origin_map):
+    """An origin cell -> CLI prefixes: digits ("44", "+33", "0049"), TCXC's special
+    values, a built-in group (EEA, Rest of world, Invalid CLI...) or an --origin-map
+    name; several separated by , ; / or |. Raises ValueError with what it can't read."""
+    found, unknown = [], []
+    for token in (t.strip() for t in re.split(r'[,;/|\n]+', text(cell)) if t.strip()):
+        upper = token.upper().replace(' ', '_')
+        key = norm(token)
+        if upper in OBR_FALLBACKS:
+            found.append(upper)
+        elif key in origin_map:
+            found.extend(origin_map[key])
+        elif key in ORIGIN_GROUPS:
+            found.extend(ORIGIN_GROUPS[key])
+        else:
+            digits = re.sub(r'[\s+()-]', '', token)
+            if digits.startswith('00'):
+                digits = digits[2:]
+            if digits.isdigit() and not digits.startswith('0') and len(digits) <= 10:
+                found.append(digits)
+            else:
+                unknown.append(token)
+    if unknown or not found:
+        raise ValueError(unknown or [text(cell)])
+    return list(dict.fromkeys(found))
 
 
 # ----------------------------------------------------------------- the work
@@ -472,6 +528,11 @@ def convert(args):
                 if len(parts) == 2 and all(p.isdigit() for p in parts):
                     hyphen_pairs.append(tuple(parts))
     hyphen_mode = infer_hyphen_mode(hyphen_pairs, args.hyphen)
+
+    obr = m['origin'] is not None
+    origin_map = {norm(k): v for k, v in args.origin_map}
+    unknown_origins = Counter()
+    origin_counts = Counter()
 
     rules = sorted(((norm(k), v) for k, v in args.increment_rule), key=lambda r: -len(r[0]))
     default_increment = args.default_increment
@@ -569,10 +630,32 @@ def convert(args):
             problems['billing increment must be positive'].append(f'{row}: {pair}')
             continue
 
+        origins = ['']
+        if obr:
+            cell = values[m['origin']]
+            try:
+                origins = resolve_origin(cell, origin_map) if text(cell) else (
+                    [args.origin_default] if args.origin_default else None)
+            except ValueError as exc:
+                for name in exc.args[0]:
+                    unknown_origins[name] += 1
+                continue
+            if origins is None:
+                problems['origin is missing'].append(f'{row}: codes {codes[:3]}')
+                continue
+            origin_counts.update(o if o in OBR_FALLBACKS else 'country or range' for o in origins)
+
         for code in codes:
-            increment_sources[source] += 1
-            rates.append(Rate(code, effective, int(forbidden), int(discontinued), price1, price_n,
-                              pair[0], pair[1], row, destination))
+            for origin in origins:
+                increment_sources[source] += 1
+                rates.append(Rate(code, effective, int(forbidden), int(discontinued), price1, price_n,
+                                  pair[0], pair[1], row, destination, origin))
+
+    if unknown_origins:
+        shown = ', '.join(f'{name!r} ({n} rows)' for name, n in unknown_origins.most_common(8))
+        raise DeckError(f'Origins the converter cannot map to caller prefixes: {shown}. Map each with '
+                        f'--origin-map "NAME=CODE,CODE" (e.g. --origin-map "Gulf=971,966,974"), or to a fallback '
+                        f'with --origin-map "NAME=OBR_GLOBAL_DEFAULT_RATE". Nothing was written.')
 
     if problems and not args.skip_bad_rows:
         lines = [f'  - {msg}: {len(ex)} rows, e.g. ' + '; '.join(ex[:3]) for msg, ex in problems.items()]
@@ -581,17 +664,18 @@ def convert(args):
 
     final, conflicts, exact_duplicates = {}, [], 0
     for rate in rates:
-        earlier = final.get(rate.code)
+        key = (rate.code, rate.origin)
+        earlier = final.get(key)
         if earlier is None:
-            final[rate.code] = rate
+            final[key] = rate
         elif earlier.values() == rate.values():
             exact_duplicates += 1
         else:
             conflicts.append((earlier, rate))
             if args.on_duplicate == 'last':
-                final[rate.code] = rate
+                final[key] = rate
     if conflicts and args.on_duplicate == 'error':
-        shown = '; '.join(f'{a.code} ({a.row}: {a.price1:g} {a.interval1}/{a.interval_n} vs '
+        shown = '; '.join(f'{a.code}{"/" + a.origin if a.origin else ""} ({a.row}: {a.price1:g} {a.interval1}/{a.interval_n} vs '
                           f'{b.row}: {b.price1:g} {b.interval1}/{b.interval_n})' for a, b in conflicts[:5])
         raise DeckError(f'{len(conflicts)} codes appear more than once with different values, e.g. {shown}. '
                         f'This is often peak/off-peak bands or overlapping ranges; decide which to keep '
@@ -599,11 +683,12 @@ def convert(args):
 
     for flag, codes in (('forbidden', args.forbid), ('discontinued', args.discontinue)):
         for code in codes:
-            if code in final:
-                setattr(final[code], flag, 1)
-            else:
-                final[code] = Rate(code, 'ASAP', int(flag == 'forbidden'), int(flag == 'discontinued'), 0.0, 0.0,
-                                   default_increment[0], default_increment[1], 'added by option', '')
+            matching = [r for (c, _), r in final.items() if c == code]
+            for r in matching:
+                setattr(r, flag, 1)
+            if not matching and not obr:
+                final[(code, '')] = Rate(code, 'ASAP', int(flag == 'forbidden'), int(flag == 'discontinued'), 0.0, 0.0,
+                                         default_increment[0], default_increment[1], 'added by option', '')
 
     if args.markup_percent or args.decimals is not None:
         decimals = 6 if args.decimals is None else args.decimals
@@ -615,9 +700,10 @@ def convert(args):
     out = Path(args.out or f'tcxc_{re.sub(r"[^A-Za-z0-9]+", "_", Path(args.deck).stem).strip("_")}.csv')
     with open(out, 'w', newline='', encoding='utf-8') as handle:
         writer = csv.writer(handle, lineterminator='\n')
-        writer.writerow(COLUMNS)
+        writer.writerow(OBR_COLUMNS if obr else COLUMNS)
         for r in final.values():
-            writer.writerow(['', '', r.code, r.effective, '', r.forbidden, r.discontinued,
+            writer.writerow(['', '', r.code] + ([r.origin] if obr else []) +
+                            [r.effective, '', r.forbidden, r.discontinued,
                              format_price(r.price1), format_price(r.price_n), r.interval1, r.interval_n])
 
     warnings = []
@@ -644,8 +730,13 @@ def convert(args):
     if newest_date is not None and newest_date < now - timedelta(days=90):
         warnings.append(f'the newest effective date in the deck is {newest_date:%Y-%m-%d} '
                         f'({(now - newest_date).days} days ago); make sure this is the carrier\'s current deck')
-    warnings.extend(future_fallbacks(final.values()))
-    warnings.extend(suspicious_rates(final.values()))
+    if obr:
+        warnings.extend(origin_warnings(final.values()))
+        warnings.append('this is an origin-based deck: upload it with "Origin-based rates" ticked (obr=1), '
+                        'and turn origin-based rating on for the route')
+    else:
+        warnings.extend(future_fallbacks(final.values()))
+    warnings.extend(suspicious_rates(final.values() if not obr else [r for r in final.values() if r.origin not in OBR_FALLBACKS]))
 
     report(args, sheet, header_index, other_sheets, about, raw_headers, m, date_format, hyphen_mode, hyphen_pairs,
            len(rates), final, exact_duplicates, skipped, skipped_examples, increment_sources, rule_hits, warnings, out)
@@ -653,6 +744,33 @@ def convert(args):
     print()
     print_report(result, out)
     return 1 if result['errors'] else 0
+
+
+def origin_warnings(rates):
+    """Codes with origin prices but no fallback, and fallbacks cheaper than a real origin."""
+    by_code = defaultdict(dict)
+    for r in rates:
+        if not (r.forbidden or r.discontinued):
+            by_code[r.code][r.origin] = r.price1
+    cheap, bare = [], []
+    for code, prices in by_code.items():
+        real = {o: p for o, p in prices.items() if o not in OBR_FALLBACKS}
+        if not real:
+            continue
+        top = max(real, key=real.get)
+        cheap.extend(f'{code}: {f} {prices[f]:g} < origin {top} {real[top]:g}'
+                     for f in OBR_FALLBACKS if f in prices and prices[f] < real[top])
+        if 'OBR_GLOBAL_DEFAULT_RATE' not in prices:
+            bare.append(code)
+    lines = []
+    if cheap:
+        lines.append(f'{len(cheap)} fallback rates are cheaper than a real origin, so callers could hide or garble '
+                     f'their caller ID to pay less, e.g. {cheap[:3]} - price fallbacks at the highest origin rate')
+    if bare:
+        lines.append(f'{len(bare)} codes have origin prices but no OBR_GLOBAL_DEFAULT_RATE, e.g. {bare[:5]}: '
+                     f'calls from other origins pay the route\'s normal rate (pass --origin-default or add a '
+                     f'"Rest of world" row if that is not intended)')
+    return lines
 
 
 def future_fallbacks(rates):
@@ -750,6 +868,9 @@ def report(args, sheet, header_index, other_sheets, about, raw_headers, m, date_
         top = ', '.join(f'{k} {v}' for k, v in rule_hits.most_common(12))
         more = f', +{len(rule_hits) - 12} more' if len(rule_hits) > 12 else ''
         print(f'Rules:    {top}{more}')
+    if m.get('origin') is not None:
+        origins = Counter('country or range' if r.origin not in OBR_FALLBACKS else r.origin for r in rows)
+        print(f'Origins:  CLI Prefix <- {names([m["origin"]])} | ' + ', '.join(f'{k} {v}' for k, v in origins.most_common()))
     print(f'Flags:    Forbidden {sum(r.forbidden for r in rows)}, Discontinued {sum(r.discontinued for r in rows)}')
     if args.markup_percent:
         print(f'Markup:   +{args.markup_percent}% on every price, rounded up')
@@ -765,6 +886,23 @@ def parse_rule(value):
     if not sep or not name.strip():
         raise argparse.ArgumentTypeError(f'expected DESTINATION=FIRST/NEXT, e.g. "Brazil=30/6", got {value!r}')
     return name.strip(), parse_pair(increment)
+
+
+def parse_origin_map(value):
+    name, sep, codes = value.partition('=')
+    found = []
+    for c in (c.strip() for c in re.split(r'[,;\s]+', codes) if c.strip()):
+        if c.upper() in OBR_FALLBACKS:
+            found.append(c.upper())
+        else:
+            digits = c.lstrip('+')
+            digits = digits[2:] if digits.startswith('00') else digits
+            if not (digits.isdigit() and not digits.startswith('0') and len(digits) <= 10):
+                raise argparse.ArgumentTypeError(f'{c!r} in {value!r} is not a calling code or {"/".join(OBR_FALLBACKS)}')
+            found.append(digits)
+    if not sep or not name.strip() or not found:
+        raise argparse.ArgumentTypeError(f'expected NAME=CODE,CODE, e.g. "Gulf=971,966,974", got {value!r}')
+    return name.strip(), found
 
 
 def parse_pair(value):
@@ -811,6 +949,13 @@ def main():
     cols.add_argument('--interval1', metavar='COL', help='first-increment column (use with --interval-n)')
     cols.add_argument('--interval-n', metavar='COL', help='next-increment column (use with --interval1)')
     cols.add_argument('--destination', nargs='+', metavar='COL', help='destination name column(s), used for rules and warnings')
+    obr = parser.add_argument_group('origin-based rates (prices that depend on where the call comes from)')
+    obr.add_argument('--origin', metavar='COL', help='origin column: caller country codes ("44", "33,49"), groups '
+                     '(EEA, Rest of world, Invalid CLI, Unknown) or names mapped with --origin-map')
+    obr.add_argument('--origin-map', action='append', type=parse_origin_map, default=[], metavar='NAME=CODES',
+                     help='what an origin name means, e.g. "Gulf=971,966,974" or "Non-EU=OBR_GLOBAL_DEFAULT_RATE" (repeat)')
+    obr.add_argument('--origin-default', choices=list(OBR_FALLBACKS),
+                     help='origin for rows whose origin cell is empty (default: such rows are an error)')
     inc = parser.add_argument_group('billing increments not given per row')
     inc.add_argument('--increment-rule', action='append', type=parse_rule, default=[], metavar='DEST=FIRST/NEXT',
                      help='increment for destinations starting with DEST, e.g. "Brazil=30/6" (repeatable; longest match wins)')
